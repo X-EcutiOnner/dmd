@@ -1,3 +1,4 @@
+
 /**
  * Entry point for DMD.
  *
@@ -260,7 +261,7 @@ private int tryMain(size_t argc, const(char)** argv, ref Param params)
     }
 
     if (params.color)
-        global.console = Console.create(core.stdc.stdio.stderr);
+        global.console = cast(void*) createConsole(core.stdc.stdio.stderr);
 
     target.os = defaultTargetOS();           // set target operating system
     target.setCPU();
@@ -290,13 +291,13 @@ private int tryMain(size_t argc, const(char)** argv, ref Param params)
         foreach (charz; *params.debugids)
             DebugCondition.addGlobalIdent(charz.toDString());
 
-    setDefaultLibrary();
+    setDefaultLibrary(params, target);
 
     // Initialization
+    target._init(params);
     Type._init();
     Id.initialize();
     Module._init();
-    target._init(params);
     Expression._init();
     Objc._init();
     import dmd.filecache : FileCache;
@@ -558,21 +559,6 @@ private int tryMain(size_t argc, const(char)** argv, ref Param params)
     printCtfePerformanceStats();
     printTemplateStats();
 
-    Library library = null;
-    if (params.lib)
-    {
-        if (params.objfiles.length == 0)
-        {
-            error(Loc.initial, "no input files");
-            return EXIT_FAILURE;
-        }
-        library = Library.factory();
-        library.setFilename(params.objdir, params.libname);
-        // Add input object and input library files to output library
-        foreach (p; libmodules)
-            library.addObject(p.toDString(), null);
-    }
-
     // Generate output files
     if (params.doJsonGeneration)
     {
@@ -605,6 +591,22 @@ private int tryMain(size_t argc, const(char)** argv, ref Param params)
 
     if (global.errors)
         fatal();
+
+    if (params.lib && params.objfiles.length == 0)
+    {
+        error(Loc.initial, "no input files");
+        return EXIT_FAILURE;
+    }
+
+    Library library = null;
+    if (params.lib)
+    {
+        library = Library.factory();
+        library.setFilename(params.objdir, params.libname);
+        // Add input object and input library files to output library
+        foreach (p; libmodules)
+            library.addObject(p.toDString(), null);
+    }
 
     if (!params.obj)
     {
@@ -681,7 +683,7 @@ private int tryMain(size_t argc, const(char)** argv, ref Param params)
 
     // Output the makefile dependencies
     if (params.emitMakeDeps)
-        emitMakeDeps(params, library);
+        emitMakeDeps(params);
 
     if (global.warnings)
         errorOnWarning();
@@ -805,7 +807,7 @@ bool parseCommandlineAndConfig(size_t argc, const(char)** argv, ref Param params
 /// Emit the makefile dependencies for the -makedeps switch
 version (NoMain) {} else
 {
-    void emitMakeDeps(ref Param params, Library library)
+    void emitMakeDeps(ref Param params)
     {
         assert(params.emitMakeDeps);
 
@@ -816,9 +818,12 @@ version (NoMain) {} else
         {
             buf.writeEscapedMakePath(&params.exefile[0]);
         }
-        else if (params.lib && library)
+        else if (params.lib)
         {
-            buf.writeEscapedMakePath(library.getFilename());
+            const(char)[] libname = params.libname ? params.libname : FileName.name(params.objfiles[0].toDString);
+            libname = FileName.forceExt(libname,target.lib_ext);
+
+            buf.writeEscapedMakePath(&libname[0]);
         }
         else if (params.objname)
         {
@@ -1222,37 +1227,37 @@ const(char)[] parse_conf_arg(Strings* args)
  * Note that if `-defaultlib=` or `-debuglib=` was used,
  * we don't override that either.
  */
-private void setDefaultLibrary()
+private void setDefaultLibrary(ref Param params, const ref Target target)
 {
-    if (global.params.defaultlibname is null)
+    if (params.defaultlibname is null)
     {
         if (target.os == Target.OS.Windows)
         {
             if (target.is64bit)
-                global.params.defaultlibname = "phobos64";
+                params.defaultlibname = "phobos64";
             else if (target.mscoff)
-                global.params.defaultlibname = "phobos32mscoff";
+                params.defaultlibname = "phobos32mscoff";
             else
-                global.params.defaultlibname = "phobos";
+                params.defaultlibname = "phobos";
         }
         else if (target.os & (Target.OS.linux | Target.OS.FreeBSD | Target.OS.OpenBSD | Target.OS.Solaris | Target.OS.DragonFlyBSD))
         {
-            global.params.defaultlibname = "libphobos2.a";
+            params.defaultlibname = "libphobos2.a";
         }
         else if (target.os == Target.OS.OSX)
         {
-            global.params.defaultlibname = "phobos2";
+            params.defaultlibname = "phobos2";
         }
         else
         {
             assert(0, "fix this");
         }
     }
-    else if (!global.params.defaultlibname.length)  // if `-defaultlib=` (i.e. an empty defaultlib)
-        global.params.defaultlibname = null;
+    else if (!params.defaultlibname.length)  // if `-defaultlib=` (i.e. an empty defaultlib)
+        params.defaultlibname = null;
 
-    if (global.params.debuglibname is null)
-        global.params.debuglibname = global.params.defaultlibname;
+    if (params.debuglibname is null)
+        params.debuglibname = params.defaultlibname;
 }
 
 /**
@@ -1486,7 +1491,7 @@ bool parseCommandLine(const ref Strings arguments, const size_t argc, ref Param 
                     if (t.deprecated_)
                         continue;
 
-                    buf ~= `setFlagFor!name(params.`~t.paramName~`);`;
+                    buf ~= `setFlagFor(name, params.`~t.paramName~`);`;
                 }
                 buf ~= "return true;\n";
 
@@ -1495,7 +1500,7 @@ bool parseCommandLine(const ref Strings arguments, const size_t argc, ref Param 
                     buf ~= `case "`~t.name~`":`;
                     if (t.deprecated_)
                         buf ~= "deprecation(Loc.initial, \"`-"~name~"="~t.name~"` no longer has any effect.\"); ";
-                    buf ~= `setFlagFor!name(params.`~t.paramName~`); return true;`;
+                    buf ~= `setFlagFor(name, params.`~t.paramName~`); return true;`;
                 }
                 return buf;
             }
@@ -1612,7 +1617,25 @@ bool parseCommandLine(const ref Strings arguments, const size_t argc, ref Param 
             }
 
             const(char)[] checkarg = arg[len .. $];
-            if (!(check(checkarg, "assert",    params.useAssert     ) ||
+            if (checkarg == "on")
+            {
+                params.useAssert        = CHECKENABLE.on;
+                params.useArrayBounds   = CHECKENABLE.on;
+                params.useIn            = CHECKENABLE.on;
+                params.useInvariants    = CHECKENABLE.on;
+                params.useOut           = CHECKENABLE.on;
+                params.useSwitchError   = CHECKENABLE.on;
+            }
+            else if (checkarg == "off")
+            {
+                params.useAssert        = CHECKENABLE.off;
+                params.useArrayBounds   = CHECKENABLE.off;
+                params.useIn            = CHECKENABLE.off;
+                params.useInvariants    = CHECKENABLE.off;
+                params.useOut           = CHECKENABLE.off;
+                params.useSwitchError   = CHECKENABLE.off;
+            }
+            else if (!(check(checkarg, "assert",    params.useAssert) ||
                   check(checkarg, "bounds",    params.useArrayBounds) ||
                   check(checkarg, "in",        params.useIn         ) ||
                   check(checkarg, "invariant", params.useInvariants ) ||
@@ -1837,6 +1860,12 @@ bool parseCommandLine(const ref Strings arguments, const size_t argc, ref Param 
                 error("unknown error style '%.*s', must be 'digitalmars' or 'gnu'", cast(int) style.length, style.ptr);
             }
         }
+        else if (startsWith(p + 1, "target"))
+        {
+            enum len = "-target=".length;
+            const triple = Triple(p + len);
+            target.setTriple(triple);
+        }
         else if (startsWith(p + 1, "mcpu")) // https://dlang.org/dmd.html#switch-mcpu
         {
             enum len = "-mcpu=".length;
@@ -1985,11 +2014,11 @@ bool parseCommandLine(const ref Strings arguments, const size_t argc, ref Param 
             }
 
             if (params.useDIP1021)
-                params.vsafe = true;    // dip1021 implies dip1000
+                params.useDIP1000 = FeatureState.enabled;    // dip1021 implies dip1000
 
             // copy previously standalone flags from -transition
             // -preview=dip1000 implies -preview=dip25 too
-            if (params.vsafe)
+            if (params.useDIP1000 == FeatureState.enabled)
                 params.useDIP25 = FeatureState.enabled;
         }
         else if (startsWith(p + 1, "revert") ) // https://dlang.org/dmd.html#switch-revert
@@ -2202,7 +2231,7 @@ bool parseCommandLine(const ref Strings arguments, const size_t argc, ref Param 
         else if (arg == "-dip1000")
         {
             params.useDIP25 = FeatureState.enabled;
-            params.vsafe = true;
+            params.useDIP1000 = FeatureState.enabled;
         }
         else if (arg == "-dip1008")
         {
@@ -2526,10 +2555,6 @@ private void reconcileCommands(ref Param params)
             error(Loc.initial, "`-mscrtlib` can only be used when targetting windows");
     }
 
-    // Target uses 64bit pointers.
-    // FIXME: X32 is 64bit but uses 32 bit pointers
-    target.isLP64 = target.is64bit;
-
     if (params.boundscheck != CHECKENABLE._default)
     {
         if (params.useArrayBounds == CHECKENABLE._default)
@@ -2650,13 +2675,13 @@ private void reconcileLinkRunLib(ref Param params, size_t numSrcFiles)
 }
 
 /// Sets the boolean for a flag with the given name
-private static void setFlagFor(string name)(ref bool b)
+private static void setFlagFor(string name, ref bool b)
 {
     b = name != "revert";
 }
 
 /// Sets the FeatureState for a flag with the given name
-private static void setFlagFor(string name)(ref FeatureState s)
+private static void setFlagFor(string name, ref FeatureState s)
 {
     s = name != "revert" ? FeatureState.enabled : FeatureState.disabled;
 }

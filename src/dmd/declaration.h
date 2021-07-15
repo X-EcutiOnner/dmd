@@ -134,6 +134,7 @@ public:
     bool isIn()  const  { return (storage_class & STCin) != 0; }
     bool isOut() const  { return (storage_class & STCout) != 0; }
     bool isRef() const  { return (storage_class & STCref) != 0; }
+    bool isReference() const { return (storage_class & (STCref | STCout)) != 0; }
 
     bool isFuture() const { return (storage_class & STCfuture) != 0; }
 
@@ -599,7 +600,7 @@ public:
     bool overloadInsert(Dsymbol *s);
     bool inUnittest();
     MATCH leastAsSpecialized(FuncDeclaration *g);
-    LabelDsymbol *searchLabel(Identifier *ident);
+    LabelDsymbol *searchLabel(Identifier *ident, const Loc &loc);
     int getLevel(FuncDeclaration *fd, int intypeof); // lexical nesting level difference
     int getLevelAndCheck(const Loc &loc, Scope *sc, FuncDeclaration *fd);
     const char *toPrettyChars(bool QualifyTypes = false);

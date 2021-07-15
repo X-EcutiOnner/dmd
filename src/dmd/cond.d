@@ -15,6 +15,7 @@ module dmd.cond;
 
 import core.stdc.string;
 import dmd.arraytypes;
+import dmd.astenums;
 import dmd.ast_node;
 import dmd.dcast;
 import dmd.dmodule;
@@ -117,7 +118,7 @@ extern (C++) final class StaticForeach : RootObject
      */
     bool needExpansion = false;
 
-    extern (D) this(const ref Loc loc,ForeachStatement aggrfe,ForeachRangeStatement rangefe)
+    extern (D) this(const ref Loc loc, ForeachStatement aggrfe, ForeachRangeStatement rangefe)
     {
         assert(!!aggrfe ^ !!rangefe);
 
@@ -173,6 +174,7 @@ extern (C++) final class StaticForeach : RootObject
             aggrfe.aggr = new TupleExp(aggr.loc, es);
             aggrfe.aggr = aggrfe.aggr.expressionSemantic(sc);
             aggrfe.aggr = aggrfe.aggr.optimize(WANTvalue);
+            aggrfe.aggr = aggrfe.aggr.ctfeInterpret();
         }
         else
         {
@@ -255,7 +257,8 @@ extern (C++) final class StaticForeach : RootObject
         auto ty = new TypeTypeof(loc, new TupleExp(loc, e));
         sdecl.members.push(new VarDeclaration(loc, ty, fid, null, 0));
         auto r = cast(TypeStruct)sdecl.type;
-        r.vtinfo = TypeInfoStructDeclaration.create(r); // prevent typeinfo from going to object file
+        if (global.params.useTypeInfo && Type.dtypeinfo)
+            r.vtinfo = TypeInfoStructDeclaration.create(r); // prevent typeinfo from going to object file
         return r;
     }
 
@@ -450,11 +453,6 @@ extern (C++) final class StaticForeach : RootObject
             aggrfe.aggr = aggrfe.aggr.expressionSemantic(sc);
             sc = sc.endCTFE();
             aggrfe.aggr = aggrfe.aggr.optimize(WANTvalue);
-            auto tab = aggrfe.aggr.type.toBasetype();
-            if (tab.ty != Ttuple)
-            {
-                aggrfe.aggr = aggrfe.aggr.ctfeInterpret();
-            }
         }
 
         if (aggrfe && aggrfe.aggr.type.toBasetype().ty == Terror)
@@ -990,7 +988,7 @@ private void printDepsConditional(Scope* sc, DVCondition condition, const(char)[
     if (!global.params.moduleDeps || global.params.moduleDepsFile)
         return;
     OutBuffer* ob = global.params.moduleDeps;
-    Module imod = sc ? sc.instantiatingModule() : condition.mod;
+    Module imod = sc ? sc._module : condition.mod;
     if (!imod)
         return;
     ob.writestring(depType);

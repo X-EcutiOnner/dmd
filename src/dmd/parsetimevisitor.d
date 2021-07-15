@@ -150,6 +150,7 @@ public:
     void visit(AST.TypeQualified t) { visit(cast(AST.Type)t); }
     void visit(AST.TypeTraits t) { visit(cast(AST.Type)t); }
     void visit(AST.TypeMixin t) { visit(cast(AST.Type)t); }
+    void visit(AST.TypeTag t) { visit(cast(AST.Type)t); }
 
     // TypeNext
     void visit(AST.TypeReference t) { visit(cast(AST.TypeNext)t); }
@@ -290,4 +291,5 @@ public:
     void visit(AST.StructInitializer i) { visit(cast(AST.Initializer)i); }
     void visit(AST.ArrayInitializer i) { visit(cast(AST.Initializer)i); }
     void visit(AST.VoidInitializer i) { visit(cast(AST.Initializer)i); }
+    void visit(AST.CInitializer i) { visit(cast(AST.CInitializer)i); }
 }

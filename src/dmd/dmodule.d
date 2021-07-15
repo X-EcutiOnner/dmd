@@ -19,6 +19,7 @@ import core.stdc.string;
 import dmd.aggregate;
 import dmd.arraytypes;
 import dmd.astcodegen;
+import dmd.astenums;
 import dmd.compiler;
 import dmd.gluelayer;
 import dmd.dimport;
@@ -48,14 +49,6 @@ import dmd.semantic3;
 import dmd.target;
 import dmd.utils;
 import dmd.visitor;
-
-version(Windows) {
-    extern (C) char* getcwd(char* buffer, size_t maxlen);
-} else {
-    import core.sys.posix.unistd : getcwd;
-}
-
-/* ===========================  ===================== */
 
 enum package_d  = "package." ~ mars_ext;
 enum package_di = "package." ~ hdr_ext;
@@ -249,13 +242,6 @@ private const(char)[] getFilename(Identifier[] packages, Identifier ident)
     filename = buf.extractSlice()[0 .. $ - 1];
 
     return filename;
-}
-
-enum PKG : int
-{
-    unknown,     // not yet determined whether it's a package.d or not
-    module_,      // already determined that's an actual package.d
-    package_,     // already determined that's an actual package
 }
 
 /***********************************************************
@@ -472,6 +458,7 @@ extern (C++) final class Module : Package
     Strings contentImportedFiles; // array of files whose content was imported
     int needmoduleinfo;
     int selfimports;            // 0: don't know, 1: does not, 2: does
+    Dsymbol[void*] tagSymTab;   /// ImportC: tag symbols that conflict with other symbols used as the index
 
     /*************************************
      * Return true if module imports itself.
@@ -481,11 +468,11 @@ extern (C++) final class Module : Package
         //printf("Module::selfImports() %s\n", toChars());
         if (selfimports == 0)
         {
-            for (size_t i = 0; i < amodules.dim; i++)
-                amodules[i].insearch = 0;
+            foreach (Module m; amodules)
+                m.insearch = 0;
             selfimports = imports(this) + 1;
-            for (size_t i = 0; i < amodules.dim; i++)
-                amodules[i].insearch = 0;
+            foreach (Module m; amodules)
+                m.insearch = 0;
         }
         return selfimports == 2;
     }
@@ -500,20 +487,19 @@ extern (C++) final class Module : Package
         //printf("Module::rootImports() %s\n", toChars());
         if (rootimports == 0)
         {
-            for (size_t i = 0; i < amodules.dim; i++)
-                amodules[i].insearch = 0;
+            foreach (Module m; amodules)
+                m.insearch = 0;
             rootimports = 1;
-            for (size_t i = 0; i < amodules.dim; ++i)
+            foreach (Module m; amodules)
             {
-                Module m = amodules[i];
                 if (m.isRoot() && imports(m))
                 {
                     rootimports = 2;
                     break;
                 }
             }
-            for (size_t i = 0; i < amodules.dim; i++)
-                amodules[i].insearch = 0;
+            foreach (Module m; amodules)
+                m.insearch = 0;
         }
         return rootimports == 2;
     }
@@ -602,7 +588,7 @@ extern (C++) final class Module : Package
 
     extern (C++) static Module load(Loc loc, Identifiers* packages, Identifier ident)
     {
-        return load(loc, (*packages)[], ident);
+        return load(loc, packages ? (*packages)[] : null, ident);
     }
 
     extern (D) static Module load(Loc loc, Identifier[] packages, Identifier ident)
@@ -1060,8 +1046,7 @@ extern (C++) final class Module : Package
         {
             isCFile = true;
 
-            scope p = new CParser!AST(this, buf, cast(bool) docfile,
-                target.c.longsize, target.c.long_doublesize, target.c.wchar_tsize);
+            scope p = new CParser!AST(this, buf, cast(bool) docfile, target.c);
             p.nextToken();
             members = p.parseModule();
             md = p.md;
@@ -1423,7 +1408,7 @@ extern (C++) final class Module : Package
             memcpy(todo, deferred.tdata(), len * Dsymbol.sizeof);
             deferred.setDim(0);
 
-            for (size_t i = 0; i < len; i++)
+            foreach (i; 0..len)
             {
                 Dsymbol s = todo[i];
                 s.dsymbolSemantic(null);
@@ -1474,11 +1459,8 @@ extern (C++) final class Module : Package
 
     extern (D) static void clearCache()
     {
-        for (size_t i = 0; i < amodules.dim; i++)
-        {
-            Module m = amodules[i];
+        foreach (Module m; amodules)
             m.searchCacheIdent = null;
-        }
     }
 
     /************************************
@@ -1491,15 +1473,11 @@ extern (C++) final class Module : Package
         //printf("%s Module::imports(%s)\n", toChars(), m.toChars());
         version (none)
         {
-            for (size_t i = 0; i < aimports.dim; i++)
-            {
-                Module mi = cast(Module)aimports.data[i];
-                printf("\t[%d] %s\n", i, mi.toChars());
-            }
+            foreach (i, Module mi; aimports)
+                printf("\t[%d] %s\n", cast(int) i, mi.toChars());
         }
-        for (size_t i = 0; i < aimports.dim; i++)
+        foreach (Module mi; aimports)
         {
-            Module mi = aimports[i];
             if (mi == m)
                 return true;
             if (!mi.insearch)

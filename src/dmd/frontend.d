@@ -140,18 +140,17 @@ void initDMD(
     }
 
     versionIdentifiers.each!(VersionCondition.addGlobalIdent);
-    addDefaultVersionIdentifiers(global.params, target);
 
+    target.os = defaultTargetOS();
+    target._init(global.params);
     Type._init();
     Id.initialize();
     Module._init();
-    target._init(global.params);
-    target.os = defaultTargetOS();
     Expression._init();
     Objc._init();
     FileCache._init();
 
-    addDefaultVersionIdentifiers(global.params,target);
+    addDefaultVersionIdentifiers(global.params, target);
 
     version (CRuntime_Microsoft)
         initFPU();
@@ -449,7 +448,8 @@ string prettyPrint(Module m)
     import dmd.root.outbuffer: OutBuffer;
     import dmd.hdrgen : HdrGenState, moduleToBuffer2;
 
-    OutBuffer buf = { doindent: 1 };
+    auto buf = OutBuffer();
+    buf.doindent = 1;
     HdrGenState hgs = { fullDump: 1 };
     moduleToBuffer2(m, &buf, &hgs);
 

@@ -135,7 +135,8 @@ enum
                                     // meaning don't search imports in that scope,
                                     // because qualified module searches search
                                     // their imports
-    IgnoreSymbolVisibility  = 0x80  // also find private and package protected symbols
+    IgnoreSymbolVisibility  = 0x80,  // also find private and package protected symbols
+    TagNameSpace            = 0x100, // search ImportC tag symbol table
 };
 
 class Dsymbol : public ASTNode
@@ -387,7 +388,7 @@ public:
     Dsymbol *lookup(Identifier const * const ident);
 
     // Look for Dsymbol in table. If there, return it. If not, insert s and return that.
-    Dsymbol *update(Dsymbol *s);
+    void update(Dsymbol *s);
 
     // Insert Dsymbol in table. Return NULL if already there.
     Dsymbol *insert(Dsymbol *s);

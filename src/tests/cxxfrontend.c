@@ -9,8 +9,10 @@
  */
 
 #include "root/array.h"
+#include "root/bitarray.h"
 #include "root/ctfloat.h"
 #include "root/dcompat.h"
+#include "root/dsystem.h"
 #include "root/file.h"
 #include "root/filename.h"
 #include "root/longdouble.h"
@@ -18,7 +20,6 @@
 #include "root/outbuffer.h"
 #include "root/port.h"
 #include "root/rmem.h"
-#include "root/root.h"
 
 #include "aggregate.h"
 #include "aliasthis.h"
@@ -67,17 +68,19 @@ static void frontend_init()
     gc_disable();
 
     global._init();
-    target.os = Target::OS_linux;
     global.vendor = "Front-End Tester";
     global.params.objname = NULL;
+
+    target.os = Target::OS_linux;
+    target.is64bit = true;
     target.cpu = CPU::native;
+    target._init(global.params);
 
     Type::_init();
     Id::initialize();
     Module::_init();
     Expression::_init();
     Objc::_init();
-    target._init(global.params);
     CTFloat::initialize();
 }
 
@@ -101,7 +104,7 @@ void test_tokens()
     assert(strcmp(Token::toChars(TOKlparen), "(") == 0);
 
     // Last valid TOK value
-    assert(TOK__asm == TOKMAX - 1);
+    assert(TOK__attribute__ == TOKMAX - 1);
     assert(strcmp(Token::toChars(TOKvectorarray), "vectorarray") == 0);
 }
 
@@ -525,14 +528,22 @@ void test_cppmangle()
     fd = (*cd->members)[0]->isFuncDeclaration();
     assert(fd);
     mangle = cppThunkMangleItanium(fd, b->offset);
-    assert(strcmp(mangle, "_ZThn4_N7Derived9MethodCPPEv") == 0);
+    assert(strcmp(mangle, "_ZThn8_N7Derived9MethodCPPEv") == 0);
 
     fd = (*cd->members)[1]->isFuncDeclaration();
     assert(fd);
     mangle = cppThunkMangleItanium(fd, b->offset);
-    assert(strcmp(mangle, "_ZThn4_N7Derived7MethodDEv") == 0);
+    assert(strcmp(mangle, "_ZThn8_N7Derived7MethodDEv") == 0);
 
     assert(!global.endGagging(errors));
+}
+
+void test_module()
+{
+    unsigned errors = global.startGagging();
+    Module *mod = Module::load(Loc(), NULL, Identifier::idPool("doesnotexist.d"));
+    assert(mod == NULL);
+    assert(global.endGagging(errors));
 }
 
 /**********************************/
@@ -555,6 +566,7 @@ int main(int argc, char **argv)
     test_array();
     test_outbuffer();
     test_cppmangle();
+    test_module();
 
     frontend_term();
 

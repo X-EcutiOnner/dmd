@@ -126,7 +126,6 @@ public:
 
     virtual Scope *newScope(Scope *sc);
     void setScope(Scope *sc);
-    bool determineFields();
     size_t nonHiddenFields();
     bool determineSize(Loc loc);
     virtual void finalizeSize() = 0;
@@ -147,8 +146,7 @@ public:
     bool hasInvariant();
 
     // Back end
-    Symbol *stag;               // tag symbol for debug data
-    Symbol *sinit;
+    void *sinit;
 
     AggregateDeclaration *isAggregateDeclaration() { return this; }
     void accept(Visitor *v) { v->visit(this); }
@@ -194,11 +192,9 @@ public:
 
     static StructDeclaration *create(Loc loc, Identifier *id, bool inObject);
     StructDeclaration *syntaxCopy(Dsymbol *s);
-    void semanticTypeInfoMembers();
     Dsymbol *search(const Loc &loc, Identifier *ident, int flags = SearchLocalsOnly);
     const char *kind() const;
     void finalizeSize();
-    bool fit(const Loc &loc, Scope *sc, Expressions *elements, Type *stype);
     bool isPOD();
 
     StructDeclaration *isStructDeclaration() { return this; }

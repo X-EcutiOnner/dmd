@@ -19,6 +19,7 @@ import core.stdc.string;
 import dmd.aggregate;
 import dmd.apply;
 import dmd.arraytypes;
+import dmd.astenums;
 import dmd.gluelayer;
 import dmd.declaration;
 import dmd.dscope;
@@ -497,7 +498,7 @@ extern (C++) class ClassDeclaration : AggregateDeclaration
         if (!members || !symtab) // opaque or addMember is not yet done
         {
             // .stringof is always defined (but may be hidden by some other symbol)
-            if (ident != Id.stringof)
+            if (ident != Id.stringof && !(flags & IgnoreErrors) && semanticRun < PASS.semanticdone)
                 error("is forward referenced when looking for `%s`", ident.toChars());
             //*(char*)0=0;
             return null;

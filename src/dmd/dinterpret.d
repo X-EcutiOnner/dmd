@@ -18,6 +18,7 @@ import core.stdc.stdlib;
 import core.stdc.string;
 import dmd.apply;
 import dmd.arraytypes;
+import dmd.astenums;
 import dmd.attrib;
 import dmd.builtin;
 import dmd.constfold;
@@ -71,6 +72,10 @@ public Expression ctfeInterpret(Expression e)
         case TOK.super_:
         case TOK.type:
         case TOK.typeid_:
+        case TOK.template_:              // non-eponymous template/instance
+        case TOK.scope_:                 // ditto
+        case TOK.dotTemplateDeclaration: // ditto, e.e1 doesn't matter here
+        case TOK.dot:                    // ditto
              if (e.type.ty == Terror)
                 return ErrorExp.get();
             goto case TOK.error;
@@ -346,7 +351,7 @@ public:
     extern (C++) void pop(VarDeclaration v)
     {
         assert(!v.isDataseg() || v.isCTFE());
-        assert(!(v.storage_class & (STC.ref_ | STC.out_)));
+        assert(!v.isReference());
         const oldid = v.ctfeAdrOnStack;
         v.ctfeAdrOnStack = cast(uint)cast(size_t)savedId[oldid];
         if (v.ctfeAdrOnStack == values.dim - 1)
@@ -2127,7 +2132,7 @@ public:
                     errorSupplemental(vie.var.loc, "`%s` was uninitialized and used before set", vie.var.toChars());
                     return CTFEExp.cantexp;
                 }
-                if (goal != CTFEGoal.LValue && (v.isRef() || v.isOut()))
+                if (goal != CTFEGoal.LValue && v.isReference())
                     e = interpret(e, istate, goal);
             }
             if (!e)
@@ -2210,6 +2215,15 @@ public:
         result = getVarExp(e.loc, istate, e.var, goal);
         if (exceptionOrCant(result))
             return;
+
+        // Visit the default initializer for noreturn variables
+        // (Custom initializers would abort the current function call and exit above)
+        if (result.type.ty == Tnoreturn)
+        {
+            result.accept(this);
+            return;
+        }
+
         if ((e.var.storage_class & (STC.ref_ | STC.out_)) == 0 && e.type.baseElemOf().ty != Tstruct)
         {
             /* Ultimately, STC.ref_|STC.out_ check should be enough to see the

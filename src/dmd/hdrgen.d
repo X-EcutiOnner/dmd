@@ -19,6 +19,7 @@ import core.stdc.string;
 import dmd.aggregate;
 import dmd.aliasthis;
 import dmd.arraytypes;
+import dmd.astenums;
 import dmd.attrib;
 import dmd.complex;
 import dmd.cond;
@@ -2044,6 +2045,14 @@ public:
         buf.writeByte(')');
     }
 
+    override void visit(CompoundLiteralExp e)
+    {
+        buf.writeByte('(');
+        typeToBuffer(e.type, null, buf, hgs);
+        buf.writeByte(')');
+        e.initializer.initializerToBuffer(buf, hgs);
+    }
+
     override void visit(TypeExp e)
     {
         typeToBuffer(e.type, null, buf, hgs);
@@ -3609,6 +3618,36 @@ private void initializerToBuffer(Initializer inx, OutBuffer* buf, HdrGenState* h
         ei.exp.expressionToBuffer(buf, hgs);
     }
 
+    void visitC(CInitializer ci)
+    {
+        buf.writeByte('{');
+        foreach (i, ref DesigInit di; ci.initializerList)
+        {
+            if (i)
+                buf.writestring(", ");
+            if (di.designatorList)
+            {
+                foreach (ref Designator d; (*di.designatorList)[])
+                {
+                    if (d.exp)
+                    {
+                        buf.writeByte('[');
+                        toCBuffer(d.exp, buf, hgs);
+                        buf.writeByte(']');
+                    }
+                    else
+                    {
+                        buf.writeByte('.');
+                        buf.writestring(d.ident.toString());
+                    }
+                }
+                buf.writeByte('=');
+            }
+            initializerToBuffer(di.initializer, buf, hgs);
+        }
+        buf.writeByte('}');
+    }
+
     final switch (inx.kind)
     {
         case InitKind.error:   return visitError (inx.isErrorInitializer ());
@@ -3616,6 +3655,7 @@ private void initializerToBuffer(Initializer inx, OutBuffer* buf, HdrGenState* h
         case InitKind.struct_: return visitStruct(inx.isStructInitializer());
         case InitKind.array:   return visitArray (inx.isArrayInitializer ());
         case InitKind.exp:     return visitExp   (inx.isExpInitializer   ());
+        case InitKind.C_:      return visitC     (inx.isCInitializer     ());
     }
 }
 
@@ -3795,11 +3835,19 @@ private void typeToBufferx(Type t, OutBuffer* buf, HdrGenState* hgs)
         // https://issues.dlang.org/show_bug.cgi?id=13776
         // Don't use ti.toAlias() to avoid forward reference error
         // while printing messages.
-        TemplateInstance ti = t.sym.parent.isTemplateInstance();
+        TemplateInstance ti = t.sym.parent ? t.sym.parent.isTemplateInstance() : null;
         if (ti && ti.aliasdecl == t.sym)
             buf.writestring(hgs.fullQual ? ti.toPrettyChars() : ti.toChars());
         else
             buf.writestring(hgs.fullQual ? t.sym.toPrettyChars() : t.sym.toChars());
+    }
+
+    void visitTag(TypeTag t)
+    {
+        buf.writestring(Token.toChars(t.tok));
+        buf.writeByte(' ');
+        if (t.id)
+            buf.writestring(t.id.toChars());
     }
 
     void visitTuple(TypeTuple t)
@@ -3863,5 +3911,6 @@ private void typeToBufferx(Type t, OutBuffer* buf, HdrGenState* hgs)
         case Tnull:      return visitNull(cast(TypeNull)t);
         case Tmixin:     return visitMixin(cast(TypeMixin)t);
         case Tnoreturn:  return visitNoreturn(cast(TypeNoreturn)t);
+        case Ttag:       return visitTag(cast(TypeTag)t);
     }
 }
